@@ -70,7 +70,7 @@ func main() {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error { return downloader.Start(ctx) })
-	eg.Go(func() error { return showrss.APIServer(db, tc, ":8384") })
+	// eg.Go(func() error { return showrss.APIServer(db, tc, ":8384") })
 
 	if err := eg.Wait(); err != nil {
 		log.Fatal().Err(err).Msg("exiting")
