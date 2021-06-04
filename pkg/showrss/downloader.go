@@ -130,10 +130,18 @@ loop:
 					found = true
 				}
 				var dbep dbEpisode
-				if err := json.Unmarshal(valueData, &dbep); err != nil {
-					return err
+				if found {
+					if err := json.Unmarshal(valueData, &dbep); err != nil {
+						return err
+					}
+					dbep.Updated = time.Now()
+				} else {
+					var err error
+					dbep, err = newDBEpisode(item)
+					if err != nil {
+						return err
+					}
 				}
-				dbep.Updated = time.Now()
 				data, err := json.Marshal(&dbep)
 				if err != nil {
 					return err

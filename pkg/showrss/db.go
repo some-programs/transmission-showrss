@@ -56,8 +56,10 @@ func (d dbEpisode) Key() []byte {
 }
 
 func newDBEpisode(e Episode) (dbEpisode, error) {
+	now := time.Now()
 	return dbEpisode{
-		Created: time.Now(),
+		Created: now,
+		Updated: now,
 		Episode: e,
 	}, nil
 }
