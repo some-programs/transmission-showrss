@@ -7,12 +7,12 @@ require (
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/davecgh/go-spew v1.1.1
 	github.com/go-pa/fenv v0.2.1
-	github.com/odwrtw/transmission v0.0.0-20201126103959-294af39dc919
+	github.com/pborzenkov/go-transmission v0.2.0
 	github.com/rs/xid v1.3.0
 	github.com/rs/zerolog v1.22.0
-	go.etcd.io/bbolt v1.3.5
+	go.etcd.io/bbolt v1.3.6
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys v0.0.0-20210525143221-35b2ab0089ea // indirect
+	golang.org/x/sys v0.0.0-20210603125802-9665404d3644 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

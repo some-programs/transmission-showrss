@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/go-pa/fenv"
-	"github.com/odwrtw/transmission"
+	"github.com/pborzenkov/go-transmission/transmission"
 	"github.com/some-programs/transmission-showrss/pkg/cmdline"
 	"github.com/some-programs/transmission-showrss/pkg/log"
 	"github.com/some-programs/transmission-showrss/pkg/showrss"
@@ -20,10 +20,6 @@ func main() {
 		feedSelection      = cmdline.FeedSelectionFlags(flag.CommandLine)
 		showDirs           = cmdline.ShowDirsFlags(flag.CommandLine)
 	)
-
-	var deleteAllTorrents bool
-	// tf.Register(flag.CommandLine)
-	flag.BoolVar(&deleteAllTorrents, "delete_all_torrents", false, "wipe torrent and torrent data from transmission")
 
 	fenv.CommandLinePrefix("TMTOOL_")
 	var logConfig log.Config
@@ -40,17 +36,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	tc, err := transmission.New(*transmissionConfig)
+	tc, err := transmission.New(
+		transmissionConfig.Address,
+		transmission.WithAuth(transmissionConfig.User, transmissionConfig.Password),
+	)
 	if err != nil {
 		log.Fatal().Err(err).Msg("error creating transmission client")
-	}
-
-	if deleteAllTorrents {
-		torrents, err := tc.GetTorrents()
-		if err != nil {
-			log.Fatal().Err(err).Msg("error getting list of torrents")
-		}
-		tc.RemoveTorrents(torrents, true)
 	}
 
 	db, err := showrss.NewDB("showrss.db")

@@ -5,12 +5,18 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/odwrtw/transmission"
 	"github.com/some-programs/transmission-showrss/pkg/showrss"
 )
 
-func TransmissionConfigFlags(fs *flag.FlagSet) *transmission.Config {
-	v := &transmission.Config{}
+// TransmissionConfig .
+type TransmissionConfig struct {
+	Address  string
+	User     string
+	Password string
+}
+
+func TransmissionConfigFlags(fs *flag.FlagSet) *TransmissionConfig {
+	v := &TransmissionConfig{}
 	fs.StringVar(&v.Address, "url", "http://localhost:9091/transmission/rpc", "URL to tranmission rpc server")
 	fs.StringVar(&v.User, "user", "", "transmission rpc server username")
 	fs.StringVar(&v.Password, "pass", "", "transmission rpc server password")

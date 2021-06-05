@@ -3,7 +3,7 @@ package showrss
 import (
 	"net/http"
 
-	"github.com/odwrtw/transmission"
+	"github.com/pborzenkov/go-transmission/transmission"
 	"github.com/some-programs/transmission-showrss/pkg/log"
 	bolt "go.etcd.io/bbolt"
 )

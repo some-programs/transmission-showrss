@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/odwrtw/transmission"
+	"github.com/pborzenkov/go-transmission/transmission"
 	"github.com/rs/zerolog"
 	"github.com/some-programs/transmission-showrss/pkg/log"
 	bolt "go.etcd.io/bbolt"
@@ -45,12 +45,12 @@ type ShowRSSDownloader struct {
 	ShowDirs  ShowDirs
 	DB        *DB
 
-	trDownloadDir string
+	trDownloadDir      string
+	sessionDownloadDir string
 
-	started     bool
-	newItemCh   chan Episode // items coming from rss subscriptions
-	addItemCh   chan Episode // items that should be added
-	addedItemCh chan Episode // items that was added
+	started   bool
+	newItemCh chan Episode // items coming from rss subscriptions
+
 }
 
 func (d *ShowRSSDownloader) Start(ctx context.Context) error {
@@ -59,12 +59,12 @@ func (d *ShowRSSDownloader) Start(ctx context.Context) error {
 	}
 	d.started = true
 	d.newItemCh = make(chan Episode)
-	d.addItemCh = make(chan Episode)
-	d.addedItemCh = make(chan Episode, 100)
 
-	if err := d.TC.Session.Update(); err != nil {
+	session, err := d.TC.GetSession(context.Background(), transmission.SessionFieldDownloadDirectory)
+	if err != nil {
 		return fmt.Errorf("error connecting to transmission: %v", err)
 	}
+	d.sessionDownloadDir = session.DownloadDirectory
 
 	// show := showrss.NewClient(showrss.ClientTTL(time.Second))
 	show := NewClient()
@@ -79,6 +79,7 @@ func (d *ShowRSSDownloader) Start(ctx context.Context) error {
 			Int("user_id", userID).
 			Str("title", channel.Title).
 			Msg("adding monitor for user")
+
 		monitorFunc := func(channel Channel) func() error {
 			return func() error {
 				return show.MonitorChannel(ctx, channel, d.newItemCh)
@@ -104,16 +105,15 @@ func (d *ShowRSSDownloader) Start(ctx context.Context) error {
 		eg.Go(monitorFunc(*channel))
 	}
 
-	eg.Go(func() error { return d.filterTorrents(ctx) })
-	eg.Go(func() error { return d.addedTorrents(ctx) })
-	eg.Go(func() error { return d.addTorrents(ctx) })
+	eg.Go(func() error { return d.handleItems(ctx) })
+
 	if err := eg.Wait(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (d *ShowRSSDownloader) filterTorrents(ctx context.Context) error {
+func (d *ShowRSSDownloader) handleItems(ctx context.Context) error {
 loop:
 	for {
 		select {
@@ -122,13 +122,10 @@ loop:
 		case item := <-d.newItemCh:
 			logger := getLogger(item)
 			logger.Debug().Msg("new item")
-			var found bool
 			err := d.DB.Update(func(tx *bolt.Tx) error {
 				bucket := tx.Bucket(bucketAdded)
 				valueData := bucket.Get(item.Key())
-				if valueData != nil {
-					found = true
-				}
+				found := valueData != nil
 				var dbep dbEpisode
 				if found {
 					if err := json.Unmarshal(valueData, &dbep); err != nil {
@@ -142,6 +139,16 @@ loop:
 						return err
 					}
 				}
+				if !found {
+					logger.Debug().Msg("trying to add item to transmission")
+					if err := d.addTorrent(ctx, item); err != nil {
+						if err != errAlreadyAdded {
+							return fmt.Errorf("could not add torrent '%v' to transmission: %v", item, err)
+						}
+					}
+				} else {
+					logger.Debug().Msg("item already in added db")
+				}
 				data, err := json.Marshal(&dbep)
 				if err != nil {
 					return err
@@ -152,80 +159,36 @@ loop:
 				return nil
 			})
 			if err != nil {
-				logger.Err(err).Msg("")
+				logger.Err(err).Msg("error handling item")
 				continue loop
 			}
-			if !found {
-				d.addItemCh <- item
-			} else {
-				logger.Debug().Msg("item already in added db")
-			}
 		}
 	}
-}
-
-func (d *ShowRSSDownloader) addedTorrents(ctx context.Context) error {
-	for item := range d.addedItemCh {
-		logger := getLogger(item)
-		logger.Info().Msg("addedTorrents")
-		err := d.DB.Update(func(tx *bolt.Tx) error {
-			bucket := tx.Bucket(bucketAdded)
-			v, err := newDBEpisode(item)
-			if err != nil {
-				logger.Fatal().Err(err).Msg("")
-			}
-			value, err := json.Marshal(&v)
-			if err != nil {
-				logger.Err(err).Msg("")
-				return err
-			}
-			err = bucket.Put(item.Key(), value)
-			if err != nil {
-				return err
-			}
-			logger.Debug().Msgf("saved to db: %s:  %s", string(item.Key()), string(value))
-			return nil
-		})
-		if err != nil {
-			logger.Err(err).Msg("")
-		}
-	}
-	return nil
-}
-
-func (d *ShowRSSDownloader) addTorrents(ctx context.Context) error {
-items:
-	for item := range d.addItemCh {
-		logger := getLogger(item)
-		logger.Info().Msg("addTorrents")
-		err := d.addTorrent(item)
-		if err != nil {
-			if err == errAlreadyAdded {
-				d.addedItemCh <- item
-				continue items
-			}
-			logger.Err(err).Msg("")
-			continue items
-		}
-		logger.Info().Msg("added torrent")
-		d.addedItemCh <- item
-	}
-	return nil
 }
 
 var errAlreadyAdded = errors.New("torrent already added")
 
-func (d *ShowRSSDownloader) addTorrent(item Episode) error {
+func (d *ShowRSSDownloader) addTorrent(ctx context.Context, item Episode) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
 	logger := getLogger(item)
 
-	// Get all torrents
-	torrents, err := d.TC.GetTorrents()
+	infoHash := strings.ToLower(item.InfoHash)
+	torrents, err := d.TC.GetTorrents(ctx,
+		transmission.IDs(transmission.Hash(infoHash)),
+		transmission.TorrentFieldName, transmission.TorrentFieldHash,
+	)
 	if err != err {
 		return err
 	}
 	for _, v := range torrents {
-		if strings.ToLower(v.HashString) == strings.ToLower(item.InfoHash) {
-
+		v := v
+		logger.Debug().
+			Str("torrent_hash", string(v.Hash)).
+			Str("item_hash", infoHash).
+			Msg("torrent")
+		if strings.ToLower(string(v.Hash)) == infoHash {
 			logger.Info().Msg("already in transmission")
 			return errAlreadyAdded
 		}
@@ -234,13 +197,13 @@ func (d *ShowRSSDownloader) addTorrent(item Episode) error {
 	if d.ShowDirs.Path != "" {
 		var root string
 		if !filepath.IsAbs(d.ShowDirs.Path) {
-			root = d.TC.Session.DownloadDir
+			root = d.sessionDownloadDir
 		}
 		downloadDir = filepath.Clean(filepath.Join(root, d.ShowDirs.Path, item.ShowDirectoryName()))
 	}
-	_, err = d.TC.AddTorrent(transmission.AddTorrentArg{
-		DownloadDir: downloadDir,
-		Filename:    item.URL(),
+	_, err = d.TC.AddTorrent(context.Background(), &transmission.AddTorrentReq{
+		DownloadDirectory: String(downloadDir),
+		URL:               String(item.URL()),
 	})
 
 	if err != nil {
@@ -248,4 +211,8 @@ func (d *ShowRSSDownloader) addTorrent(item Episode) error {
 		return err
 	}
 	return nil
+}
+
+func String(s string) *string {
+	return &s
 }
