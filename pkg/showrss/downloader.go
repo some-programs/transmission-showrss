@@ -141,13 +141,18 @@ loop:
 				}
 				if !found {
 					logger.Debug().Msg("trying to add item to transmission")
-					if err := d.addTorrent(ctx, item); err != nil {
-						if err != errAlreadyAdded {
+					err := d.addTorrent(ctx, item)
+					if err != nil {
+						if err == errAlreadyAdded {
+							logger.Debug().Msg("torrent already in transmission")
+						} else {
 							return fmt.Errorf("could not add torrent '%v' to transmission: %v", item, err)
 						}
+					} else {
+						logger.Info().Msg("torrent added to transmission")
 					}
 				} else {
-					logger.Debug().Msg("item already in added db")
+					logger.Info().Msg("item already in added db")
 				}
 				data, err := json.Marshal(&dbep)
 				if err != nil {
@@ -184,10 +189,8 @@ func (d *ShowRSSDownloader) addTorrent(ctx context.Context, item Episode) error 
 	}
 	for _, v := range torrents {
 		v := v
-		logger.Debug().
-			Str("torrent_hash", string(v.Hash)).
-			Str("item_hash", infoHash).
-			Msg("torrent")
+		logger := logger.With().Str("torrent_hash", string(v.Hash)).Logger()
+		logger.Trace().Msg("compare torrent")
 		if strings.ToLower(string(v.Hash)) == infoHash {
 			logger.Info().Msg("already in transmission")
 			return errAlreadyAdded
@@ -205,11 +208,12 @@ func (d *ShowRSSDownloader) addTorrent(ctx context.Context, item Episode) error 
 		DownloadDirectory: String(downloadDir),
 		URL:               String(item.URL()),
 	})
-
 	if err != nil {
 		logger.Err(err).Msg(spew.Sdump(torrents, item))
 		return err
 	}
+
+	logger.Debug().Msg("added torrent")
 	return nil
 }
 
