@@ -66,7 +66,6 @@ func (d *ShowRSSDownloader) Start(ctx context.Context) error {
 	}
 	d.sessionDownloadDir = session.DownloadDirectory
 
-	// show := showrss.NewClient(showrss.ClientTTL(time.Second))
 	show := NewClient()
 
 	eg, ctx := errgroup.WithContext(ctx)

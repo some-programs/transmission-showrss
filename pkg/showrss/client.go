@@ -11,27 +11,11 @@ import (
 	"github.com/some-programs/transmission-showrss/pkg/log"
 )
 
-var defaultHTTPClient = &http.Client{
-	Transport: &http.Transport{
-		ExpectContinueTimeout: time.Minute,
-		ResponseHeaderTimeout: time.Minute,
-		TLSHandshakeTimeout:   time.Minute,
-	},
-	Timeout: time.Minute,
-}
-
 type clientOpt func(c *Client) error
 
 func ClientTTL(ttl time.Duration) clientOpt {
 	return func(c *Client) error {
 		c.ttl = &ttl
-		return nil
-	}
-}
-
-func ClientHTTPClint(c *http.Client) clientOpt {
-	return func(sc *Client) error {
-		sc.httpClient = c
 		return nil
 	}
 }
@@ -48,9 +32,8 @@ const defaultBaseURL = "http://showrss.info"
 
 // Client .
 type Client struct {
-	httpClient *http.Client
-	ttl        *time.Duration
-	baseURL    string
+	ttl     *time.Duration
+	baseURL string
 }
 
 func (c *Client) makeURL(path string) string {
@@ -70,21 +53,14 @@ func (c *Client) GetShowFeed(ctx context.Context, ID int) (*Channel, error) {
 }
 
 func (c *Client) get(ctx context.Context, url string) (*Channel, error) {
-	httpClient := c.httpClient
-	if httpClient == nil {
-		httpClient = defaultHTTPClient
-	}
 	log.Info().Str("feed_url", url).Msg("")
-	var cancel context.CancelFunc
-	var getCtx context.Context
-	getCtx, cancel = context.WithTimeout(ctx, 15*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(getCtx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	resp, err := httpClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
