@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"sort"
 	"time"
 
 	"github.com/cenkalti/backoff"
@@ -114,9 +113,6 @@ func (c *Client) MonitorChannel(ctx context.Context, channel Channel, episodeCh 
 
 	var last time.Time
 	var failures int
-	dc := &dedupCache{
-		items: make(map[string]time.Time),
-	}
 	var bo *backoff.ExponentialBackOff
 	currentChannel = &channel
 loop:
@@ -153,23 +149,18 @@ loop:
 		last = time.Now()
 		if currentChannel != nil {
 			epslen := len(currentChannel.Episodes)
-
 			log.Debug().Msgf("episodes: %v", epslen)
 			if currentChannel.Episodes != nil {
-			eps:
 				for _, item := range currentChannel.Episodes {
-					if dc.Has(item) {
-						log.Debug().Interface("item", item).Msg("already sent")
-						continue eps
-					}
+					item := item
+					logger := getLogger(item)
 					select {
 					case <-ctx.Done():
 						return ctx.Err()
 					case episodeCh <- item:
-						log.Debug().Interface("item", item).Msg("sent")
+						logger.Debug().Interface("item", item).Msg("sent")
 					}
 				}
-				dc.Update(currentChannel.Episodes)
 			}
 			currentChannel = nil
 		}
@@ -183,50 +174,5 @@ loop:
 				continue loop
 			}
 		}
-	}
-}
-
-// dedupCache .
-type dedupCache struct {
-	items  map[string]time.Time
-	maxEps int
-}
-
-func (d *dedupCache) Has(e Episode) bool {
-	_, ok := d.items[e.InfoHash]
-	return ok
-}
-
-func (d *dedupCache) Update(eps []Episode) {
-	l := len(eps)
-	if l > d.maxEps {
-		d.maxEps = l
-	}
-	if l > 0 {
-		now := time.Now()
-		for _, ep := range eps {
-			d.items[ep.InfoHash] = now
-		}
-	}
-	if len(d.items) > 3*d.maxEps {
-		d.clean()
-	}
-}
-
-func (d *dedupCache) clean() {
-	type kv struct {
-		k string
-		v time.Time
-	}
-	var ss []kv
-	for k, v := range d.items {
-		ss = append(ss, kv{k, v})
-	}
-	sort.Slice(
-		ss, func(i, j int) bool {
-			return ss[i].v.After(ss[j].v)
-		})
-	for _, mk := range ss[d.maxEps:] {
-		delete(d.items, mk.k)
 	}
 }
