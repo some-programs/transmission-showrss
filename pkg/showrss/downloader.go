@@ -183,7 +183,7 @@ func (d *ShowRSSDownloader) addTorrent(ctx context.Context, item Episode) error 
 		transmission.IDs(transmission.Hash(infoHash)),
 		transmission.TorrentFieldName, transmission.TorrentFieldHash,
 	)
-	if err != err {
+	if err != nil {
 		return err
 	}
 	for _, v := range torrents {
