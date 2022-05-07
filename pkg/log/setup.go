@@ -1,7 +1,6 @@
 package log
 
 import (
-	"fmt"
 	"io"
 	"io/ioutil"
 	stdlog "log"
@@ -9,7 +8,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/diode"
 	zlog "github.com/rs/zerolog/log"
 )
 
@@ -36,16 +34,6 @@ func SetDiscardLogger() {
 	zerolog.SetGlobalLevel(zerolog.TraceLevel)
 	Logger = zerolog.New(ioutil.Discard)
 	LoggerWithoutCaller = zerolog.New(ioutil.Discard)
-	setup()
-}
-
-// SetNonBlockingLogger sets up a logger with a non blocking writer
-func SetNonBlockingLogger(w io.Writer) {
-	wr := diode.NewWriter(w, 1000, 10*time.Millisecond, func(missed int) {
-		fmt.Printf("Logger Dropped %d messages", missed)
-	})
-	LoggerWithoutCaller = zerolog.New(wr).With().Timestamp().Logger()
-	Logger = LoggerWithoutCaller.With().Caller().Logger()
 	setup()
 }
 
