@@ -51,10 +51,6 @@ type dbEpisode struct {
 	Episode Episode   `json:"episode"`
 }
 
-func (d dbEpisode) Key() []byte {
-	return d.Key()
-}
-
 func newDBEpisode(e Episode) (dbEpisode, error) {
 	now := time.Now()
 	return dbEpisode{
