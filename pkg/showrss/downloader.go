@@ -17,10 +17,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func fmtLog(item Episode, msg string) string {
-	return fmt.Sprintf("%s *** %s *** %s", item.InfoHash, msg, item.Title)
-}
-
 func getLogger(item Episode) zerolog.Logger {
 	return log.With().Str("info_hash", item.InfoHash).Str("title", item.Title).Logger()
 }
@@ -45,7 +41,6 @@ type ShowRSSDownloader struct {
 	ShowDirs  ShowDirs
 	DB        *DB
 
-	trDownloadDir      string
 	sessionDownloadDir string
 
 	started   bool
